@@ -5,6 +5,47 @@
       <p>{{ t('orders.description') }}</p>
     </div>
 
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">{{ t('restocking.submitted.title') }} ({{ restockingOrders.length }})</h3>
+      </div>
+      <div v-if="restockingLoading" class="loading">{{ t('common.loading') }}</div>
+      <div v-else-if="restockingError" class="error">{{ restockingError }}</div>
+      <div v-else-if="restockingOrders.length === 0" class="empty-state">
+        {{ t('restocking.submitted.empty') }}
+      </div>
+      <div v-else class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ t('restocking.submitted.orderNumber') }}</th>
+              <th>{{ t('restocking.submitted.orderDate') }}</th>
+              <th>{{ t('restocking.submitted.items') }}</th>
+              <th>{{ t('restocking.submitted.totalCost') }}</th>
+              <th>{{ t('restocking.submitted.leadTime') }}</th>
+              <th>{{ t('restocking.submitted.expectedDelivery') }}</th>
+              <th>{{ t('restocking.submitted.status') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="ro in restockingOrders" :key="ro.id">
+              <td><strong>{{ ro.order_number }}</strong></td>
+              <td>{{ formatDate(ro.order_date) }}</td>
+              <td>
+                <div v-for="item in ro.items" :key="item.sku" class="restock-item">
+                  {{ translateProductName(item.name) }} x {{ item.quantity }}
+                </div>
+              </td>
+              <td><strong>{{ formatCurrency(ro.total_cost, currentCurrency) }}</strong></td>
+              <td>{{ t('restocking.days', { count: ro.lead_time_days }) }}</td>
+              <td>{{ formatDate(ro.expected_delivery) }}</td>
+              <td><span class="badge info">{{ t('restocking.submitted.statusSubmitted') }}</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div v-if="loading" class="loading">{{ t('common.loading') }}</div>
     <div v-else-if="error" class="error">{{ error }}</div>
     <div v-else>
@@ -83,6 +124,7 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { api } from '../api'
 import { useFilters } from '../composables/useFilters'
 import { useI18n } from '../composables/useI18n'
+import { formatCurrency } from '../utils/currency'
 
 export default {
   name: 'Orders',
@@ -95,6 +137,22 @@ export default {
     const loading = ref(true)
     const error = ref(null)
     const orders = ref([])
+    const restockingOrders = ref([])
+    const restockingLoading = ref(true)
+    const restockingError = ref(null)
+
+    const loadRestockingOrders = async () => {
+      try {
+        restockingLoading.value = true
+        restockingError.value = null
+        restockingOrders.value = await api.getRestockingOrders()
+      } catch (err) {
+        restockingError.value = t('restocking.submitted.loadError')
+        console.error('Restocking orders load error:', err)
+      } finally {
+        restockingLoading.value = false
+      }
+    }
 
     // Use shared filters
     const {
@@ -153,13 +211,21 @@ export default {
       })
     }
 
-    onMounted(loadOrders)
+    onMounted(() => {
+      loadRestockingOrders()
+      loadOrders()
+    })
 
     return {
       t,
       loading,
       error,
       orders,
+      restockingOrders,
+      restockingLoading,
+      restockingError,
+      currentCurrency,
+      formatCurrency,
       getOrdersByStatus,
       getOrderStatusClass,
       formatDate,
@@ -172,6 +238,18 @@ export default {
 </script>
 
 <style scoped>
+.empty-state {
+  text-align: center;
+  padding: 2rem;
+  color: #64748b;
+  font-size: 0.938rem;
+}
+
+.restock-item {
+  font-size: 0.813rem;
+  color: #334155;
+}
+
 /* Fixed table layout to prevent column shifting */
 .orders-table {
   table-layout: fixed;
